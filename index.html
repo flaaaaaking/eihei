@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>番茄钟 · Pomodoro（Notion 嵌入友好·2.0）</title>
+<style>
+  /* =====================
+     THEME & TOKENS
+  ======================*/
+  :root{
+    --bg:#f7f3ef; --panel:#ffffff; --text:#252629; --muted:#8e9096; --line:#e7e2db;
+    --primary:#ff6a55; --accent:#ffc77a; --ring:rgba(255,106,85,.35);
+    --scene-brightness:1; --text-opacity:1; --alive-opacity:0;
+    --radius:16px; --radius-sm:12px;
+  }
+  /* 夜雾 */
+  [data-skin="nightfog"]{
+    --bg:#0f1216; --panel:#151a21; --text:#ebeff6; --muted:#a6b0bf; --line:#232a36;
+    --primary:#7aa6ff; --accent:#9fd4ff; --ring:rgba(122,166,255,.35);
+  }
+  /* 番茄红（默认·日落橙基调） */
+  [data-skin="tomato"]{
+    --bg:#f7f3ef; --panel:#ffffff; --text:#252629; --muted:#8e9096; --line:#e7e2db;
+    --primary:#ff6a55; --accent:#ffc77a; --ring:rgba(255,106,85,.35);
+  }
+  /* 白昼柔灰 */
+  [data-skin="daylight"]{
+    --bg:#fafbfc; --panel:#ffffff; --text:#1f2329; --muted:#9095a0; --line:#e8ebf0;
+    --primary:#ff7d66; --accent:#ffd288; --ring:rgba(255,125,102,.30);
+  }
+
+  *{box-sizing:border-box}
+  body{margin:0; background:var(--bg); color:var(--text); font:15px/1.65 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"PingFang SC","Microsoft Yahei"}
+  a{color:inherit}
+  .wrap{max-width:780px; margin:0 auto; padding:16px}
+  header{position:sticky; top:0; backdrop-filter:blur(8px) saturate(150%); background:color-mix(in srgb,var(--bg) 90%, transparent); z-index:5; border-bottom:1px solid var(--line)}
+  .bar{display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 0}
+  .title{font-weight:800; letter-spacing:.2px; font-size:16px}
+
+  .btn{appearance:none; border:1px solid var(--line); background:var(--panel); color:var(--text); padding:9px 14px; border-radius:12px; cursor:pointer; font-weight:600; transition:transform .12s ease, filter .12s ease}
+  .btn.primary{background:var(--primary); color:#fff; border:none}
+  .btn:hover{filter:brightness(1.06)}
+  .btn:active{transform:translateY(1px)}
+  .hint{color:var(--muted); font-size:12px}
+
+  /* =====================
+     STAGE
+  ======================*/
+  .stage{position:relative; border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; min-height:400px; display:flex; align-items:center; justify-content:center; text-align:center; filter:brightness(var(--scene-brightness));
+    background:
+      radial-gradient(1400px 700px at 10% -10%, color-mix(in srgb, var(--primary) 10%, transparent), transparent 60%),
+      radial-gradient(1200px 600px at 110% 110%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 65%),
+      linear-gradient(120deg, color-mix(in srgb, var(--panel) 70%, transparent), transparent 70%),
+      var(--bg);
+    animation: drift 30s linear infinite;
+  }
+  @keyframes drift{ from{ background-position: 0 0, 0 0, 0 0, 0 0 } to{ background-position: 20px 0, -20px 0, 60px 0, 0 0 } }
+
+  /* 顶部徽标（自适应缩放） */
+  .badge{position:absolute; top:12px; left:50%; transform:translateX(-50%); background:color-mix(in srgb, var(--primary) 18%, var(--panel)); border:1px solid var(--line); color:var(--text); padding:6px 14px; border-radius:999px; font-weight:800; font-size:14px}
+  .badge small{font-weight:700; opacity:.75; margin-left:.35em}
+  @media (max-width:400px){ .badge{font-size:12px; padding:5px 10px} }
+
+  .center{position:absolute; inset:0; display:grid; place-items:center}
+  .alive{font-size:20px; letter-spacing:.5px; opacity:var(--alive-opacity); animation:breath 6s ease-in-out infinite alternate}
+  @keyframes breath{from{opacity:.88} to{opacity:1}}
+
+  .paused{display:none; flex-direction:column; align-items:center; gap:14px}
+  .paused .big{font-size:56px; font-weight:800; letter-spacing:1px; text-shadow:0 1px 0 rgba(0,0,0,.04)}
+  .paused .presets{display:flex; gap:8px; flex-wrap:wrap; justify-content:center}
+
+  .ring{width:86px; height:86px; position:absolute; right:14px; top:14px; display:none}
+  .ring .num{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px}
+
+  .ops{display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:14px}
+  .ops .left{display:flex; gap:8px; align-items:center}
+  .ops .right{font-size:13px; color:var(--muted)}
+
+  .dots{position:absolute; bottom:0; left:0; right:0; height:22px; display:flex; align-items:center; justify-content:center; gap:6px}
+  .dot{width:6px; height:6px; border-radius:50%; background:color-mix(in srgb, var(--primary) 70%, transparent)}
+
+  /* 首次引导卡片 */
+  .guide{position:absolute; bottom:16px; left:50%; transform:translateX(-50%); background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:var(--radius-sm); padding:10px 12px; display:flex; gap:10px; align-items:center; box-shadow:0 10px 30px rgba(0,0,0,.06)}
+  .guide .x{border:none; background:transparent; cursor:pointer; font-weight:800}
+
+  /* Dialog + Fallback */
+  dialog{border:none; padding:0; border-radius:16px; width:min(720px,92vw); background:var(--panel); color:var(--text)}
+  dialog::backdrop{background:rgba(0,0,0,.35)}
+  .fallback-backdrop{position:fixed; inset:0; background:rgba(0,0,0,.35); display:none; z-index:40}
+  dialog[data-fallback-open="true"]{ position:fixed; left:50%; bottom:0; transform:translateX(-50%); width:min(720px,92vw); max-height:80vh; overflow:auto; display:block; z-index:41; background:var(--panel); color:var(--text); border:none; border-radius:16px 16px 0 0; box-shadow:0 -12px 40px rgba(0,0,0,.28) }
+  .fallback-backdrop[data-show="true"]{ display:block }
+  .iconbtn{border:none; background:transparent; padding:6px; border-radius:10px; cursor:pointer}
+  .iconbtn[data-close]{ color: var(--text); font-weight:800 }
+  [data-theme="dark"] .iconbtn[data-close]{ color:#fff }
+  .iconbtn[data-close]:hover{ background:color-mix(in srgb, var(--primary) 18%, transparent) }
+
+  input[type="number"]{ -moz-appearance: textfield; width:100%; background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:12px; padding:8px 10px }
+  input[type="number"]::-webkit-outer-spin-button, input[type="number"]::-webkit-inner-spin-button{ -webkit-appearance: none; margin:0 }
+  input[type="checkbox"]{ transform: translateY(1px); accent-color: var(--primary) }
+
+  .grid{display:grid; grid-template-columns:1fr 1fr; gap:12px}
+  @media (max-width:640px){ .grid{grid-template-columns:1fr} }
+
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:12px}
+  .card h3{margin:.2em 0 .6em 0; font-size:14px}
+
+  /* 完成提示 */
+  .complete{position:absolute; inset:0; display:none; align-items:center; justify-content:center; backdrop-filter:blur(2px);}
+  .complete .toast{background:color-mix(in srgb, var(--primary) 16%, var(--panel)); border:1px solid var(--line); color:var(--text); padding:12px 16px; border-radius:12px; font-weight:700; box-shadow:0 10px 30px rgba(0,0,0,.1)}
+</style>
+</head>
+<body data-skin="tomato">
+  <header>
+    <div class="wrap bar">
+      <div class="title">番茄钟 · Pomodoro</div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="stage" id="stage">
+      <div class="badge">番茄钟 <small>Pomodoro</small></div>
+      <div class="center">
+        <div class="alive" id="alive">还在</div>
+        <div class="paused" id="paused">
+          <div class="big" id="timeText">25:00</div>
+          <div class="presets">
+            <button class="btn" data-preset="25-5">25/5</button>
+            <button class="btn" data-preset="50-10">50/10</button>
+            <button class="btn" data-preset="custom">自定义</button>
+          </div>
+          <div class="hint">空格 开始/暂停 · R 重置 · 1/2/3 预设</div>
+        </div>
+      </div>
+      <div class="ring" id="ring">
+        <svg viewBox="0 0 44 44" width="86" height="86" aria-hidden="true">
+          <circle cx="22" cy="22" r="18" stroke="var(--line)" stroke-width="6" fill="none"/>
+          <circle id="ringArc" cx="22" cy="22" r="18" stroke="var(--primary)" stroke-width="6" fill="none" stroke-linecap="round" stroke-dasharray="0 999" transform="rotate(-90 22 22)"/>
+        </svg>
+        <div class="num" id="ringNum">0%</div>
+      </div>
+      <div class="dots" id="dots"></div>
+
+      <div class="guide" id="guide">
+        <span>点击「开始」进入专注模式；运行时界面会渐暗，仅留“还在”。</span>
+        <button class="x" id="closeGuide" title="关闭">✕</button>
+      </div>
+
+      <div class="complete" id="complete"><div class="toast" id="completeText">🎯 已完成一轮，休息一下吧</div></div>
+    </section>
+
+    <div class="ops">
+      <div class="left">
+        <button class="btn primary" id="btnToggle">开始</button>
+        <button class="btn" id="btnReset">重置</button>
+        <button class="btn" id="btnSettings">设置</button>
+      </div>
+      <div class="right">当前：<span id="phaseText">专注</span> · 完成 <span id="doneCount">0</span></div>
+    </div>
+
+    <p class="hint">运行时背景缓慢变暗、文字渐隐，仅留“还在”；暂停时显示时间与进度环。</p>
+  </main>
+
+  <div class="fallback-backdrop" id="backdrop"></div>
+
+  <!-- 设置对话框：分组卡片式布局 -->
+  <dialog id="dlgSettings">
+    <div class="wrap" style="padding:14px">
+      <div class="bar" style="justify-content:space-between; padding:6px 0">
+        <strong>设置</strong>
+        <button class="iconbtn" data-close title="关闭">✕</button>
+      </div>
+
+      <div class="grid">
+        <div class="card">
+          <h3>时间</h3>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px">
+            <div>
+              <label>专注（分钟）</label>
+              <input type="number" id="inFocus" min="1" max="240" step="1" placeholder="25" />
+            </div>
+            <div>
+              <label>休息（分钟）</label>
+              <input type="number" id="inBreak" min="1" max="240" step="1" placeholder="5" />
+            </div>
+          </div>
+          <label style="display:flex;align-items:center;gap:6px;margin-top:8px"><input type="checkbox" id="autoCycle" checked> 自动切换 专注⇄休息</label>
+        </div>
+
+        <div class="card">
+          <h3>声音</h3>
+          <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap">
+            <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="mute"> 静音（只闪角标）</label>
+            <label>音量 <input type="number" id="volume" min="0" max="100" step="5" value="60" style="width:92px"></label>
+            <button class="btn" id="btnTest">试听</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>外观</h3>
+          <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap">
+            <label>主题皮肤
+              <select id="skin">
+                <option value="tomato">番茄红（日落橙）</option>
+                <option value="daylight">白昼</option>
+                <option value="nightfog">夜雾</option>
+              </select>
+            </label>
+            <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="reducedMotion"> 减弱动效</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="bar" style="justify-content:flex-end; gap:8px; margin-top:10px">
+        <button class="btn" id="btnClear">清空会话记录</button>
+        <button class="btn" data-close>关闭</button>
+        <button class="btn primary" id="btnSave">保存</button>
+      </div>
+      <div class="hint">数据仅存于你的浏览器。</div>
+    </div>
+  </dialog>
+
+<script>
+(function(){
+  const $ = s=>document.querySelector(s);
+  const KEY='pomodoro.timer.v3';
+
+  let state = load() || {
+    focusMin:25, breakMin:5, autoCycle:true,
+    mute:false, volume:0.6, reducedMotion:false, skin:'tomato',
+    session:{ phase:'focus', startAt:0, durationMs:25*60*1000, interrupts:[], pomodorosDone:0 },
+    seenGuide:false
+  };
+
+  // Refs
+  const timeText=$('#timeText'), paused=$('#paused'), btnToggle=$('#btnToggle'), btnReset=$('#btnReset'), btnSettings=$('#btnSettings');
+  const ringArc=$('#ringArc'), ringNum=$('#ringNum'), ring=$('#ring');
+  const doneCount=$('#doneCount'), phaseText=$('#phaseText');
+  const dots=$('#dots'), stage=$('#stage');
+  const guide=$('#guide'), closeGuide=$('#closeGuide');
+  const toast=$('#complete');
+
+  const dlg=$('#dlgSettings'), backdrop=$('#backdrop');
+  const inFocus=$('#inFocus'), inBreak=$('#inBreak'), autoCycle=$('#autoCycle');
+  const mute=$('#mute'), volume=$('#volume'), reducedMotion=$('#reducedMotion');
+  const skin=$('#skin');
+
+  // Theme
+  function applySkin(){ document.body.setAttribute('data-skin', state.skin||'tomato'); }
+
+  // Dialog fallback
+  function openDialog(d){ if(!d) return; try{ d.showModal(); return; }catch(e){} try{ d.show(); return; }catch(e){} d.setAttribute('data-fallback-open','true'); backdrop?.setAttribute('data-show','true'); }
+  function closeDialog(d){ try{ d.close(); }catch(e){} d.removeAttribute('data-fallback-open'); backdrop?.removeAttribute('data-show'); }
+  btnSettings?.addEventListener('click',()=>openDialog(dlg));
+  document.querySelectorAll('dialog [data-close]')?.forEach(b=>b.addEventListener('click',e=>closeDialog(e.target.closest('dialog'))));
+  backdrop?.addEventListener('click',()=>closeDialog(dlg));
+  document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeDialog(dlg); });
+
+  // Presets
+  document.querySelectorAll('[data-preset]')?.forEach(b=>b.addEventListener('click',()=>{
+    const p=b.getAttribute('data-preset');
+    if(p==='25-5'){ setPreset(25,5); }
+    else if(p==='50-10'){ setPreset(50,10); }
+    else if(p==='custom'){ setPreset(state.focusMin, state.breakMin); }
+  }));
+
+  // Hydrate settings
+  function hydrate(){
+    inFocus.value=state.focusMin; inBreak.value=state.breakMin; autoCycle.checked=state.autoCycle;
+    mute.checked=state.mute; volume.value=Math.round((state.volume||0)*100);
+    reducedMotion.checked=state.reducedMotion; skin.value=state.skin||'tomato';
+    applySkin(); updateUI(true);
+    if(!state.seenGuide){ guide.style.display='flex'; } else { guide.remove(); }
+  }
+
+  // Save settings
+  $('#btnSave')?.addEventListener('click',()=>{
+    const f=clamp(parseInt(inFocus.value||'25'),1,240); const br=clamp(parseInt(inBreak.value||'5'),1,240);
+    state.focusMin=f; state.breakMin=br; state.autoCycle=!!autoCycle.checked;
+    state.mute=!!mute.checked; state.volume=clamp((parseInt(volume.value||'60')/100),0,1);
+    state.reducedMotion=!!reducedMotion.checked; state.skin=skin.value;
+    save(); applySkin(); closeDialog(dlg);
+  });
+  $('#btnClear')?.addEventListener('click',()=>{ state.session.interrupts=[]; state.session.pomodorosDone=0; save(); drawDots(); updateFooter(); alert('已清空会话记录'); });
+
+  // 试听按钮
+  let audioCtx=null; $('#btnTest')?.addEventListener('click',()=>{ if(mute.checked) return; try{ if(!audioCtx) audioCtx=new (window.AudioContext||window.webkitAudioContext)(); const o=audioCtx.createOscillator(); const g=audioCtx.createGain(); o.connect(g); g.connect(audioCtx.destination); o.type='sine'; o.frequency.value=880; const v=(parseInt(volume.value||'60')/100)||0.6; const t=audioCtx.currentTime; g.gain.value=0; o.start(); g.gain.linearRampToValueAtTime(v, t+0.02); g.gain.exponentialRampToValueAtTime(0.001, t+0.6); o.stop(t+0.65);}catch(e){} });
+
+  // Timer
+  let rafId=null, running=false;
+  function nowAbs(){ return performance.timeOrigin + performance.now(); }
+  function minutesOf(){ return state.session.phase==='focus'? state.focusMin : state.breakMin; }
+  function elapsed(){ if(!state.session.startAt) return 0; return Math.max(0, nowAbs()-state.session.startAt); }
+  function progress(){ return clamp(elapsed()/state.session.durationMs, 0, 1); }
+
+  function start(){ if(running) return; running=true; btnToggle.textContent='暂停'; $('#paused').style.display='none'; hideToast();
+    state.session.startAt = nowAbs() - elapsed(); tick(); if(!state.seenGuide){ state.seenGuide=true; guide?.remove(); save(); } }
+  function pause(){ if(!running) return; running=false; btnToggle.textContent='开始'; $('#paused').style.display='flex'; updatePausedRing(); cancelAnimationFrame(rafId); recordInterrupt(); }
+  function reset(){ running=false; cancelAnimationFrame(rafId); const dur = minutesOf()*60*1000; state.session.startAt=0; state.session.durationMs=dur; btnToggle.textContent='开始'; $('#paused').style.display='flex'; applyVisuals(0); updatePausedRing(); updateUI(true); hideToast(); }
+  function switchPhase(){ state.session.phase = (state.session.phase==='focus'?'break':'focus'); reset(); }
+
+  function tick(){ rafId = requestAnimationFrame(tick); const p=progress(); applyVisuals(p); const remainMs=Math.max(0, state.session.durationMs - elapsed()); timeText.textContent=fmt(remainMs); if(p>=1){ onComplete(); } }
+
+  function onComplete(){ cancelAnimationFrame(rafId); running=false; btnToggle.textContent='开始';
+    if(state.session.phase==='focus') state.session.pomodorosDone=(state.session.pomodorosDone||0)+1; updateFooter();
+    showToast(state.session.phase==='focus' ? '🎯 已完成一轮，休息一下吧' : '🌿 休息结束，继续出发');
+    if(state.autoCycle){ switchPhase(); start(); } else { $('#paused').style.display='flex'; updatePausedRing(); }
+    save(); ringPing(); }
+
+  // Visuals
+  function easeInOutCubic(t){ return t<0.5? 4*t*t*t : 1-Math.pow(-2*t+2,3)/2; }
+  function smoothstep(e0,e1,x){ const t=Math.min(1,Math.max(0,(x-e0)/(e1-e0))); return t*t*(3-2*t); }
+  function applyVisuals(p){ const bright = 1 - 0.30 * (state.reducedMotion? p : easeInOutCubic(p)); const textOp = p<0.60 ? 1 : (p<0.90 ? 1 - 0.70*smoothstep(0.60,0.90,p) : 0); const aliveOp = p<0.90 ? 0 : smoothstep(0.90,1,p); document.documentElement.style.setProperty('--scene-brightness', bright.toFixed(3)); document.documentElement.style.setProperty('--text-opacity', textOp.toFixed(3)); document.documentElement.style.setProperty('--alive-opacity', aliveOp.toFixed(3)); }
+
+  function updatePausedRing(){ const p=progress(); const C=2*Math.PI*18; ringArc.setAttribute('stroke-dasharray', (C*p)+" "+(C*(1-p))); ringNum.textContent=Math.round(p*100)+'%'; ring.style.display='block'; }
+
+  // Dots
+  function recordInterrupt(){ state.session.interrupts.push(Date.now()); save(); drawDots(); }
+  function drawDots(){ dots.innerHTML=''; const arr=state.session.interrupts||[]; for(let i=0;i<arr.length;i++){ dots.appendChild(dot()); if(i<arr.length-1) dots.appendChild(dash()); } function dot(){ const d=document.createElement('div'); d.className='dot'; return d; } function dash(){ const d=document.createElement('div'); d.style.cssText='flex:1;height:2px;background:color-mix(in srgb, var(--primary) 24%, transparent);border-radius:2px'; return d; } }
+
+  // Sound
+  function ringPing(){ if(state.mute) { stage.style.boxShadow='inset 0 0 0 2px color-mix(in srgb, red 70%, transparent)'; setTimeout(()=>stage.style.boxShadow='none',1000); return; } try{ if(!audioCtx) audioCtx=new (window.AudioContext||window.webkitAudioContext)(); const o=audioCtx.createOscillator(); const g=audioCtx.createGain(); o.connect(g); g.connect(audioCtx.destination); o.type='sine'; o.frequency.value=880; const v=state.volume||0.6; const t=audioCtx.currentTime; g.gain.value=0; o.start(); g.gain.linearRampToValueAtTime(v, t+0.02); g.gain.exponentialRampToValueAtTime(0.001, t+0.6); o.stop(t+0.65);}catch(e){} }
+
+  // Controls
+  btnToggle.addEventListener('click',()=> running? pause(): start());
+  btnReset.addEventListener('click', reset);
+  document.addEventListener('keydown', e=>{ if(e.target && (e.target.tagName==='INPUT' || e.target.tagName==='TEXTAREA')) return; if(e.code==='Space'){ e.preventDefault(); running? pause(): start(); } else if(e.key==='r' || e.key==='R'){ reset(); } else if(e.key==='1'){ setPreset(25,5); } else if(e.key==='2'){ setPreset(50,10); } else if(e.key==='3'){ setPreset(state.focusMin,state.breakMin); } });
+
+  function setPreset(f,b){ state.focusMin=f; state.breakMin=b; save(); if(!running) reset(); updateUI(true); }
+
+  // Guide
+  closeGuide?.addEventListener('click',()=>{ state.seenGuide=true; guide.remove(); save(); });
+
+  // Helpers
+  function fmt(ms){ const s=Math.ceil(ms/1000); const m=Math.floor(s/60), r=s%60; return String(m).padStart(2,'0')+":"+String(r).padStart(2,'0'); }
+  function clamp(x,min,max){ x=isNaN(x)?min:x; return Math.max(min, Math.min(max, x)); }
+  function updateFooter(){ doneCount.textContent = state.session.pomodorosDone||0; phaseText.textContent = state.session.phase==='focus'? '专注':'休息'; }
+  function updateUI(forcePaused){ updateFooter(); drawDots(); timeText.textContent=fmt(state.session.durationMs - elapsed()); if(forcePaused){ paused.style.display='flex'; ring.style.display='block'; updatePausedRing(); } }
+  function save(){ try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){} }
+  function load(){ try{ const s=localStorage.getItem(KEY); return s? JSON.parse(s): null; }catch(e){ return null; } }
+
+  function showToast(text){ if(!toast) return; const el=toast.querySelector('.toast'); el.textContent=text; toast.style.display='flex'; setTimeout(()=>{ toast.style.display='none'; }, 2600); }
+  function hideToast(){ if(toast) toast.style.display='none'; }
+
+  // Init
+  if(!state.session.startAt){ state.session.durationMs = (state.session.phase==='focus'? state.focusMin:state.breakMin)*60*1000; }
+  applySkin(); hydrate(); updateUI(true);
+
+  // Self tests (console)
+  try{
+    console.assert(typeof fmt==='function', 'fmt 存在');
+    console.assert(fmt(61*1000).endsWith(':01'), 'fmt 秒进位');
+    const bak=JSON.parse(JSON.stringify(state)); state.session.startAt=0; state.session.durationMs=60*1000; console.assert(progress()===0,'未开始时进度 0'); state=bak;
+  }catch(e){ console.warn('[自检失败]', e); }
+})();
+</script>
+</body>
+</html>

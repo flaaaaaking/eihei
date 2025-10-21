@@ -3,31 +3,16 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>番茄钟 · Pomodoro（Notion 嵌入友好·2.0）</title>
+<title>番茄钟 · Pomodoro（Notion 嵌入友好·2.1）</title>
 <style>
   /* =====================
-     THEME & TOKENS
+     THEME TOKENS（JS 动态覆盖）
   ======================*/
   :root{
     --bg:#f7f3ef; --panel:#ffffff; --text:#252629; --muted:#8e9096; --line:#e7e2db;
     --primary:#ff6a55; --accent:#ffc77a; --ring:rgba(255,106,85,.35);
     --scene-brightness:1; --text-opacity:1; --alive-opacity:0;
     --radius:16px; --radius-sm:12px;
-  }
-  /* 夜雾 */
-  [data-skin="nightfog"]{
-    --bg:#0f1216; --panel:#151a21; --text:#ebeff6; --muted:#a6b0bf; --line:#232a36;
-    --primary:#7aa6ff; --accent:#9fd4ff; --ring:rgba(122,166,255,.35);
-  }
-  /* 番茄红（默认·日落橙基调） */
-  [data-skin="tomato"]{
-    --bg:#f7f3ef; --panel:#ffffff; --text:#252629; --muted:#8e9096; --line:#e7e2db;
-    --primary:#ff6a55; --accent:#ffc77a; --ring:rgba(255,106,85,.35);
-  }
-  /* 白昼柔灰 */
-  [data-skin="daylight"]{
-    --bg:#fafbfc; --panel:#ffffff; --text:#1f2329; --muted:#9095a0; --line:#e8ebf0;
-    --primary:#ff7d66; --accent:#ffd288; --ring:rgba(255,125,102,.30);
   }
 
   *{box-sizing:border-box}
@@ -57,7 +42,6 @@
   }
   @keyframes drift{ from{ background-position: 0 0, 0 0, 0 0, 0 0 } to{ background-position: 20px 0, -20px 0, 60px 0, 0 0 } }
 
-  /* 顶部徽标（自适应缩放） */
   .badge{position:absolute; top:12px; left:50%; transform:translateX(-50%); background:color-mix(in srgb, var(--primary) 18%, var(--panel)); border:1px solid var(--line); color:var(--text); padding:6px 14px; border-radius:999px; font-weight:800; font-size:14px}
   .badge small{font-weight:700; opacity:.75; margin-left:.35em}
   @media (max-width:400px){ .badge{font-size:12px; padding:5px 10px} }
@@ -70,8 +54,10 @@
   .paused .big{font-size:56px; font-weight:800; letter-spacing:1px; text-shadow:0 1px 0 rgba(0,0,0,.04)}
   .paused .presets{display:flex; gap:8px; flex-wrap:wrap; justify-content:center}
 
-  .ring{width:86px; height:86px; position:absolute; right:14px; top:14px; display:none}
+  /* 进度环：2.1 常显（运行中=高亮） */
+  .ring{width:86px; height:86px; position:absolute; right:14px; top:14px}
   .ring .num{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px}
+  .ring.running{filter:drop-shadow(0 2px 8px color-mix(in srgb, var(--primary) 35%, transparent))}
 
   .ops{display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:14px}
   .ops .left{display:flex; gap:8px; align-items:center}
@@ -80,15 +66,13 @@
   .dots{position:absolute; bottom:0; left:0; right:0; height:22px; display:flex; align-items:center; justify-content:center; gap:6px}
   .dot{width:6px; height:6px; border-radius:50%; background:color-mix(in srgb, var(--primary) 70%, transparent)}
 
-  /* 首次引导卡片 */
   .guide{position:absolute; bottom:16px; left:50%; transform:translateX(-50%); background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:var(--radius-sm); padding:10px 12px; display:flex; gap:10px; align-items:center; box-shadow:0 10px 30px rgba(0,0,0,.06)}
   .guide .x{border:none; background:transparent; cursor:pointer; font-weight:800}
 
-  /* Dialog + Fallback */
-  dialog{border:none; padding:0; border-radius:16px; width:min(720px,92vw); background:var(--panel); color:var(--text)}
+  dialog{border:none; padding:0; border-radius:16px; width:min(760px,92vw); background:var(--panel); color:var(--text)}
   dialog::backdrop{background:rgba(0,0,0,.35)}
   .fallback-backdrop{position:fixed; inset:0; background:rgba(0,0,0,.35); display:none; z-index:40}
-  dialog[data-fallback-open="true"]{ position:fixed; left:50%; bottom:0; transform:translateX(-50%); width:min(720px,92vw); max-height:80vh; overflow:auto; display:block; z-index:41; background:var(--panel); color:var(--text); border:none; border-radius:16px 16px 0 0; box-shadow:0 -12px 40px rgba(0,0,0,.28) }
+  dialog[data-fallback-open="true"]{ position:fixed; left:50%; bottom:0; transform:translateX(-50%); width:min(760px,92vw); max-height:80vh; overflow:auto; display:block; z-index:41; background:var(--panel); color:var(--text); border:none; border-radius:16px 16px 0 0; box-shadow:0 -12px 40px rgba(0,0,0,.28) }
   .fallback-backdrop[data-show="true"]{ display:block }
   .iconbtn{border:none; background:transparent; padding:6px; border-radius:10px; cursor:pointer}
   .iconbtn[data-close]{ color: var(--text); font-weight:800 }
@@ -105,12 +89,11 @@
   .card{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:12px}
   .card h3{margin:.2em 0 .6em 0; font-size:14px}
 
-  /* 完成提示 */
   .complete{position:absolute; inset:0; display:none; align-items:center; justify-content:center; backdrop-filter:blur(2px);}
   .complete .toast{background:color-mix(in srgb, var(--primary) 16%, var(--panel)); border:1px solid var(--line); color:var(--text); padding:12px 16px; border-radius:12px; font-weight:700; box-shadow:0 10px 30px rgba(0,0,0,.1)}
 </style>
 </head>
-<body data-skin="tomato">
+<body>
   <header>
     <div class="wrap bar">
       <div class="title">番茄钟 · Pomodoro</div>
@@ -132,6 +115,8 @@
           <div class="hint">空格 开始/暂停 · R 重置 · 1/2/3 预设</div>
         </div>
       </div>
+
+      <!-- 进度环：常显，运行时加高亮 -->
       <div class="ring" id="ring">
         <svg viewBox="0 0 44 44" width="86" height="86" aria-hidden="true">
           <circle cx="22" cy="22" r="18" stroke="var(--line)" stroke-width="6" fill="none"/>
@@ -139,6 +124,7 @@
         </svg>
         <div class="num" id="ringNum">0%</div>
       </div>
+
       <div class="dots" id="dots"></div>
 
       <div class="guide" id="guide">
@@ -163,7 +149,7 @@
 
   <div class="fallback-backdrop" id="backdrop"></div>
 
-  <!-- 设置对话框：分组卡片式布局 -->
+  <!-- 设置对话框：新增 主题模式 + 9 套配色预设 -->
   <dialog id="dlgSettings">
     <div class="wrap" style="padding:14px">
       <div class="bar" style="justify-content:space-between; padding:6px 0">
@@ -199,11 +185,24 @@
         <div class="card">
           <h3>外观</h3>
           <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap">
-            <label>主题皮肤
+            <label>主题模式
+              <select id="themeSel">
+                <option value="auto">跟随系统（浅/深）</option>
+                <option value="light">浅色</option>
+                <option value="dark">深色</option>
+              </select>
+            </label>
+            <label>配色
               <select id="skin">
                 <option value="tomato">番茄红（日落橙）</option>
-                <option value="daylight">白昼</option>
-                <option value="nightfog">夜雾</option>
+                <option value="green">绿色</option>
+                <option value="warm">暖黄</option>
+                <option value="fog">雾光</option>
+                <option value="cool">冷蓝</option>
+                <option value="ink">墨黑</option>
+                <option value="forest">墨绿</option>
+                <option value="cream">奶油</option>
+                <option value="morandi">莫兰迪</option>
               </select>
             </label>
             <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="reducedMotion"> 减弱动效</label>
@@ -223,11 +222,12 @@
 <script>
 (function(){
   const $ = s=>document.querySelector(s);
-  const KEY='pomodoro.timer.v3';
+  const KEY='pomodoro.timer.v3.1';
 
   let state = load() || {
     focusMin:25, breakMin:5, autoCycle:true,
-    mute:false, volume:0.6, reducedMotion:false, skin:'tomato',
+    mute:false, volume:0.6, reducedMotion:false,
+    skin:'tomato', themeMode:'auto',
     session:{ phase:'focus', startAt:0, durationMs:25*60*1000, interrupts:[], pomodorosDone:0 },
     seenGuide:false
   };
@@ -243,10 +243,37 @@
   const dlg=$('#dlgSettings'), backdrop=$('#backdrop');
   const inFocus=$('#inFocus'), inBreak=$('#inBreak'), autoCycle=$('#autoCycle');
   const mute=$('#mute'), volume=$('#volume'), reducedMotion=$('#reducedMotion');
-  const skin=$('#skin');
+  const skin=$('#skin'); const themeSel=$('#themeSel');
 
-  // Theme
-  function applySkin(){ document.body.setAttribute('data-skin', state.skin||'tomato'); }
+  // 主题模式 + 预设调色
+  function applySkin(){
+    const mode = state.themeMode||'auto';
+    let dark = mode==='auto' ? window.matchMedia('(prefers-color-scheme: dark)').matches : (mode==='dark');
+    document.documentElement.setAttribute('data-theme', dark?'dark':'light');
+
+    const P = {
+      tomato: {light:{bg:'#f7f3ef',panel:'#ffffff',text:'#252629',muted:'#8e9096',line:'#e7e2db',primary:'#ff6a55',accent:'#ffc77a'}, dark:{bg:'#121316',panel:'#181b20',text:'#e9edf4',muted:'#aab2c0',line:'#232733',primary:'#ff7a66',accent:'#ffd38a'}},
+      green:  {light:{bg:'#f4f7f4',panel:'#ffffff',text:'#132015',muted:'#738479',line:'#e2e8e2',primary:'#53B38D',accent:'#B7D5C1'}, dark:{bg:'#0f1511',panel:'#17211A',text:'#E6F1EA',muted:'#98a89e',line:'#1d2a22',primary:'#6ED3AD',accent:'#9AC8AC'}},
+      warm:   {light:{bg:'#faf6ea',panel:'#ffffff',text:'#1f1a12',muted:'#8e8778',line:'#eae1cf',primary:'#E9C77B',accent:'#D6A55B'}, dark:{bg:'#14120e',panel:'#1b1914',text:'#f3eee2',muted:'#bdb6a6',line:'#2b261c',primary:'#D9B76D',accent:'#B98E4A'}},
+      fog:    {light:{bg:'#eef3f8',panel:'#ffffff',text:'#10141b',muted:'#7d8896',line:'#e1e7ef',primary:'#7FB2FF',accent:'#C5DEF9'}, dark:{bg:'#0a0f17',panel:'#111827',text:'#e6ecf4',muted:'#9fb0c8',line:'#1b2433',primary:'#8AB9FF',accent:'#BCD5F6'}},
+      cool:   {light:{bg:'#f3f7fc',panel:'#ffffff',text:'#121820',muted:'#7a8798',line:'#e2e9f3',primary:'#6AA7FF',accent:'#9AD0F5'}, dark:{bg:'#0b0f16',panel:'#121826',text:'#e6edf7',muted:'#9caac0',line:'#1a2232',primary:'#77B3FF',accent:'#9AD0F5'}},
+      ink:    {light:{bg:'#eceef2',panel:'#ffffff',text:'#0f1318',muted:'#6f7885',line:'#e0e4ea',primary:'#9BC0FF',accent:'#7A7F87'}, dark:{bg:'#0a0b0d',panel:'#121417',text:'#e5eaf1',muted:'#9aa2ad',line:'#1c1e22',primary:'#9BC0FF',accent:'#7A7F87'}},
+      forest: {light:{bg:'#f4f7f4',panel:'#ffffff',text:'#152015',muted:'#758475',line:'#e2e8e2',primary:'#4FA07C',accent:'#B7D5C1'}, dark:{bg:'#0f1511',panel:'#17211A',text:'#E6F1EA',muted:'#97a79b',line:'#1d2a22',primary:'#5FB892',accent:'#9AC8AC'}},
+      cream:  {light:{bg:'#faf8f2',panel:'#ffffff',text:'#1f1a12',muted:'#8a8270',line:'#ece4d2',primary:'#E6C27A',accent:'#9EB8D0'}, dark:{bg:'#14120e',panel:'#1b1914',text:'#f3eee2',muted:'#c1b8a6',line:'#2b261c',primary:'#D9B76D',accent:'#87A9C9'}},
+      morandi:{light:{bg:'#f4f2f3',panel:'#ffffff',text:'#1b1a1c',muted:'#87838a',line:'#e6e3e6',primary:'#B7C2CE',accent:'#C9B1AB'}, dark:{bg:'#121113',panel:'#19181b',text:'#ece9ec',muted:'#b5b0b6',line:'#262328',primary:'#B7C2CE',accent:'#C9B1AB'}},
+    };
+    const pal = P[state.skin||'tomato'];
+    const set = (state.themeMode==='dark' || (state.themeMode!=='light' && window.matchMedia('(prefers-color-scheme: dark)').matches)) ? pal.dark : pal.light;
+    const r = document.documentElement.style;
+    r.setProperty('--bg', set.bg); r.setProperty('--panel', set.panel); r.setProperty('--text', set.text);
+    r.setProperty('--muted', set.muted); r.setProperty('--line', set.line);
+    r.setProperty('--primary', set.primary); r.setProperty('--accent', set.accent);
+    const rgb = hexToRgb(set.primary); r.setProperty('--ring', `rgba(${rgb.r},${rgb.g},${rgb.b},0.35)`);
+  }
+  const prefers = window.matchMedia('(prefers-color-scheme: dark)');
+  prefers.addEventListener?.('change', ()=>{ if((state.themeMode||'auto')==='auto'){ applySkin(); }});
+
+  function hexToRgb(hex){ const h=hex.replace('#',''); const b=h.length===3? h.split('').map(x=>x+x).join('') : h; const n=parseInt(b,16)||0; return {r:(n>>16)&255, g:(n>>8)&255, b:n&255}; }
 
   // Dialog fallback
   function openDialog(d){ if(!d) return; try{ d.showModal(); return; }catch(e){} try{ d.show(); return; }catch(e){} d.setAttribute('data-fallback-open','true'); backdrop?.setAttribute('data-show','true'); }
@@ -269,8 +296,9 @@
     inFocus.value=state.focusMin; inBreak.value=state.breakMin; autoCycle.checked=state.autoCycle;
     mute.checked=state.mute; volume.value=Math.round((state.volume||0)*100);
     reducedMotion.checked=state.reducedMotion; skin.value=state.skin||'tomato';
+    themeSel.value=state.themeMode||'auto';
     applySkin(); updateUI(true);
-    if(!state.seenGuide){ guide.style.display='flex'; } else { guide.remove(); }
+    if(!state.seenGuide){ guide.style.display='flex'; } else { guide.remove?.(); }
   }
 
   // Save settings
@@ -278,7 +306,7 @@
     const f=clamp(parseInt(inFocus.value||'25'),1,240); const br=clamp(parseInt(inBreak.value||'5'),1,240);
     state.focusMin=f; state.breakMin=br; state.autoCycle=!!autoCycle.checked;
     state.mute=!!mute.checked; state.volume=clamp((parseInt(volume.value||'60')/100),0,1);
-    state.reducedMotion=!!reducedMotion.checked; state.skin=skin.value;
+    state.reducedMotion=!!reducedMotion.checked; state.skin=skin.value; state.themeMode=themeSel.value;
     save(); applySkin(); closeDialog(dlg);
   });
   $('#btnClear')?.addEventListener('click',()=>{ state.session.interrupts=[]; state.session.pomodorosDone=0; save(); drawDots(); updateFooter(); alert('已清空会话记录'); });
@@ -293,26 +321,26 @@
   function elapsed(){ if(!state.session.startAt) return 0; return Math.max(0, nowAbs()-state.session.startAt); }
   function progress(){ return clamp(elapsed()/state.session.durationMs, 0, 1); }
 
-  function start(){ if(running) return; running=true; btnToggle.textContent='暂停'; $('#paused').style.display='none'; hideToast();
-    state.session.startAt = nowAbs() - elapsed(); tick(); if(!state.seenGuide){ state.seenGuide=true; guide?.remove(); save(); } }
-  function pause(){ if(!running) return; running=false; btnToggle.textContent='开始'; $('#paused').style.display='flex'; updatePausedRing(); cancelAnimationFrame(rafId); recordInterrupt(); }
-  function reset(){ running=false; cancelAnimationFrame(rafId); const dur = minutesOf()*60*1000; state.session.startAt=0; state.session.durationMs=dur; btnToggle.textContent='开始'; $('#paused').style.display='flex'; applyVisuals(0); updatePausedRing(); updateUI(true); hideToast(); }
+  function start(){ if(running) return; running=true; btnToggle.textContent='暂停'; $('#paused').style.display='none'; hideToast(); ring.classList.add('running');
+    state.session.startAt = nowAbs() - elapsed(); tick(); if(!state.seenGuide){ state.seenGuide=true; guide?.remove?.(); save(); } }
+  function pause(){ if(!running) return; running=false; btnToggle.textContent='开始'; $('#paused').style.display='flex'; cancelAnimationFrame(rafId); recordInterrupt(); ring.classList.remove('running'); }
+  function reset(){ running=false; cancelAnimationFrame(rafId); const dur = minutesOf()*60*1000; state.session.startAt=0; state.session.durationMs=dur; btnToggle.textContent='开始'; $('#paused').style.display='flex'; applyVisuals(0); updateUI(true); hideToast(); ring.classList.remove('running'); }
   function switchPhase(){ state.session.phase = (state.session.phase==='focus'?'break':'focus'); reset(); }
 
-  function tick(){ rafId = requestAnimationFrame(tick); const p=progress(); applyVisuals(p); const remainMs=Math.max(0, state.session.durationMs - elapsed()); timeText.textContent=fmt(remainMs); if(p>=1){ onComplete(); } }
+  function tick(){ rafId = requestAnimationFrame(tick); const p=progress(); applyVisuals(p); const remainMs=Math.max(0, state.session.durationMs - elapsed()); timeText.textContent=fmt(remainMs);
+    const C=2*Math.PI*18; ringArc.setAttribute('stroke-dasharray', (C*p)+" "+(C*(1-p))); ringNum.textContent=Math.round(p*100)+'%';
+    if(p>=1){ onComplete(); } }
 
   function onComplete(){ cancelAnimationFrame(rafId); running=false; btnToggle.textContent='开始';
     if(state.session.phase==='focus') state.session.pomodorosDone=(state.session.pomodorosDone||0)+1; updateFooter();
     showToast(state.session.phase==='focus' ? '🎯 已完成一轮，休息一下吧' : '🌿 休息结束，继续出发');
-    if(state.autoCycle){ switchPhase(); start(); } else { $('#paused').style.display='flex'; updatePausedRing(); }
+    if(state.autoCycle){ switchPhase(); start(); } else { $('#paused').style.display='flex'; }
     save(); ringPing(); }
 
-  // Visuals
+  // Visuals 渐隐
   function easeInOutCubic(t){ return t<0.5? 4*t*t*t : 1-Math.pow(-2*t+2,3)/2; }
   function smoothstep(e0,e1,x){ const t=Math.min(1,Math.max(0,(x-e0)/(e1-e0))); return t*t*(3-2*t); }
   function applyVisuals(p){ const bright = 1 - 0.30 * (state.reducedMotion? p : easeInOutCubic(p)); const textOp = p<0.60 ? 1 : (p<0.90 ? 1 - 0.70*smoothstep(0.60,0.90,p) : 0); const aliveOp = p<0.90 ? 0 : smoothstep(0.90,1,p); document.documentElement.style.setProperty('--scene-brightness', bright.toFixed(3)); document.documentElement.style.setProperty('--text-opacity', textOp.toFixed(3)); document.documentElement.style.setProperty('--alive-opacity', aliveOp.toFixed(3)); }
-
-  function updatePausedRing(){ const p=progress(); const C=2*Math.PI*18; ringArc.setAttribute('stroke-dasharray', (C*p)+" "+(C*(1-p))); ringNum.textContent=Math.round(p*100)+'%'; ring.style.display='block'; }
 
   // Dots
   function recordInterrupt(){ state.session.interrupts.push(Date.now()); save(); drawDots(); }
@@ -329,13 +357,13 @@
   function setPreset(f,b){ state.focusMin=f; state.breakMin=b; save(); if(!running) reset(); updateUI(true); }
 
   // Guide
-  closeGuide?.addEventListener('click',()=>{ state.seenGuide=true; guide.remove(); save(); });
+  closeGuide?.addEventListener('click',()=>{ state.seenGuide=true; guide.remove?.(); save(); });
 
   // Helpers
   function fmt(ms){ const s=Math.ceil(ms/1000); const m=Math.floor(s/60), r=s%60; return String(m).padStart(2,'0')+":"+String(r).padStart(2,'0'); }
   function clamp(x,min,max){ x=isNaN(x)?min:x; return Math.max(min, Math.min(max, x)); }
   function updateFooter(){ doneCount.textContent = state.session.pomodorosDone||0; phaseText.textContent = state.session.phase==='focus'? '专注':'休息'; }
-  function updateUI(forcePaused){ updateFooter(); drawDots(); timeText.textContent=fmt(state.session.durationMs - elapsed()); if(forcePaused){ paused.style.display='flex'; ring.style.display='block'; updatePausedRing(); } }
+  function updateUI(forcePaused){ updateFooter(); drawDots(); timeText.textContent=fmt(state.session.durationMs - elapsed()); if(forcePaused){ paused.style.display='flex'; } }
   function save(){ try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){} }
   function load(){ try{ const s=localStorage.getItem(KEY); return s? JSON.parse(s): null; }catch(e){ return null; } }
 
@@ -346,7 +374,7 @@
   if(!state.session.startAt){ state.session.durationMs = (state.session.phase==='focus'? state.focusMin:state.breakMin)*60*1000; }
   applySkin(); hydrate(); updateUI(true);
 
-  // Self tests (console)
+  // Self tests
   try{
     console.assert(typeof fmt==='function', 'fmt 存在');
     console.assert(fmt(61*1000).endsWith(':01'), 'fmt 秒进位');

@@ -245,7 +245,7 @@
   const mute=$('#mute'), volume=$('#volume'), reducedMotion=$('#reducedMotion');
   const skin=$('#skin'); const themeSel=$('#themeSel');
 
-  // 主题模式 + 预设调色
+  // 主题模式 + 预设调色（浅/深双套）
   function applySkin(){
     const mode = state.themeMode||'auto';
     let dark = mode==='auto' ? window.matchMedia('(prefers-color-scheme: dark)').matches : (mode==='dark');
@@ -275,7 +275,7 @@
 
   function hexToRgb(hex){ const h=hex.replace('#',''); const b=h.length===3? h.split('').map(x=>x+x).join('') : h; const n=parseInt(b,16)||0; return {r:(n>>16)&255, g:(n>>8)&255, b:n&255}; }
 
-  // Dialog fallback
+  // Dialog fallback（保证任何环境都能弹出）
   function openDialog(d){ if(!d) return; try{ d.showModal(); return; }catch(e){} try{ d.show(); return; }catch(e){} d.setAttribute('data-fallback-open','true'); backdrop?.setAttribute('data-show','true'); }
   function closeDialog(d){ try{ d.close(); }catch(e){} d.removeAttribute('data-fallback-open'); backdrop?.removeAttribute('data-show'); }
   btnSettings?.addEventListener('click',()=>openDialog(dlg));
@@ -323,13 +323,14 @@
 
   function start(){ if(running) return; running=true; btnToggle.textContent='暂停'; $('#paused').style.display='none'; hideToast(); ring.classList.add('running');
     state.session.startAt = nowAbs() - elapsed(); tick(); if(!state.seenGuide){ state.seenGuide=true; guide?.remove?.(); save(); } }
-  function pause(){ if(!running) return; running=false; btnToggle.textContent='开始'; $('#paused').style.display='flex'; cancelAnimationFrame(rafId); recordInterrupt(); ring.classList.remove('running'); }
-  function reset(){ running=false; cancelAnimationFrame(rafId); const dur = minutesOf()*60*1000; state.session.startAt=0; state.session.durationMs=dur; btnToggle.textContent='开始'; $('#paused').style.display='flex'; applyVisuals(0); updateUI(true); hideToast(); ring.classList.remove('running'); }
+  function pause(){ if(!running) return; running=false; btnToggle.textContent='开始'; $('#paused').style.display='flex'; cancelAnimationFrame(rafId); recordInterrupt(); ring.classList.remove('running'); updateRing(); }
+  function reset(){ running=false; cancelAnimationFrame(rafId); const dur = minutesOf()*60*1000; state.session.startAt=0; state.session.durationMs=dur; btnToggle.textContent='开始'; $('#paused').style.display='flex'; applyVisuals(0); updateUI(true); hideToast(); ring.classList.remove('running'); updateRing(); }
   function switchPhase(){ state.session.phase = (state.session.phase==='focus'?'break':'focus'); reset(); }
 
   function tick(){ rafId = requestAnimationFrame(tick); const p=progress(); applyVisuals(p); const remainMs=Math.max(0, state.session.durationMs - elapsed()); timeText.textContent=fmt(remainMs);
-    const C=2*Math.PI*18; ringArc.setAttribute('stroke-dasharray', (C*p)+" "+(C*(1-p))); ringNum.textContent=Math.round(p*100)+'%';
-    if(p>=1){ onComplete(); } }
+    updateRing(); if(p>=1){ onComplete(); } }
+
+  function updateRing(){ const p=progress(); const C=2*Math.PI*18; ringArc.setAttribute('stroke-dasharray', (C*p)+" "+(C*(1-p))); ringNum.textContent=Math.round(p*100)+'%'; }
 
   function onComplete(){ cancelAnimationFrame(rafId); running=false; btnToggle.textContent='开始';
     if(state.session.phase==='focus') state.session.pomodorosDone=(state.session.pomodorosDone||0)+1; updateFooter();
@@ -372,7 +373,7 @@
 
   // Init
   if(!state.session.startAt){ state.session.durationMs = (state.session.phase==='focus'? state.focusMin:state.breakMin)*60*1000; }
-  applySkin(); hydrate(); updateUI(true);
+  applySkin(); hydrate(); updateUI(true); updateRing();
 
   // Self tests
   try{
